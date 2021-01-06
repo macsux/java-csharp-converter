@@ -13,30 +13,22 @@
   <Namespace>Microsoft.CodeAnalysis.Editing</Namespace>
 </Query>
 
-
+static ConstructorInfo MethodSymbolConstructor = Type.GetType("Microsoft.CodeAnalysis.CSharp.Symbols.PublicModel.MethodSymbol, Microsoft.CodeAnalysis.CSharp").GetConstructors().First();
 async Task Main()
 {
-	var helper = typeof(Microsoft.CodeAnalysis.CSharp.CSharpCompilation).Assembly.DefinedTypes
-		.Where(x => x.Name == "OverriddenOrHiddenMembersHelpers")
-		.SelectMany(x => x.AsType()
-			.GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
-			.Where(x => x.Name == "MakeOverriddenOrHiddenMembers" && x.GetParameters().FirstOrDefault()?.ParameterType.Name == "MethodSymbol"))
-		.First()
-		.GetParameters()
-		.Select(x => x.ParameterType)
-		.Dump();
-		//return;
-	//Type.GetType("Microsoft.CodeAnalysis.CSharp.Symbols.OverriddenOrHiddenMembersHelpers").Dump();
+	
+		
 	var code = @"
     public class A : B
     {
 		[Override]
-		public string IMethod(bool i) => true;
+		public bool IMethod() => true;
     }
-	public class B : IHi
+	public class Bs
 	{
-		public string IMethod(bool i) => true;
+		public bool IMethod() => false;
 	}
+
 	public interface IHi
 	{
 		bool IMethod();
@@ -58,67 +50,96 @@ async Task Main()
 
 	var doc = workspace.AddDocument(project.Id, @"hello\test.cs", cu.GetText());
 	doc = doc.WithFilePath(doc.Name);
+	var docId = doc.Id;
 
 	workspace.TryApplyChanges(workspace.CurrentSolution.WithDocumentFilePath(doc.Id, doc.FilePath));
 	solution = workspace.CurrentSolution;
-	var documents = solution.Projects.SelectMany(x => x.Documents);
 	
-	var model = await doc.GetSemanticModelAsync();
-	var root = (CompilationUnitSyntax)await doc.GetSyntaxRootAsync();
-	var classSyntax = root.DescendantNodes().OfType<ClassDeclarationSyntax>().First();
-	var symbol = model.GetDeclaredSymbol(classSyntax);
-	//model.GetDiagnostics().Where(x => x.Id == "CS0108").Dump();
-	//return;
-	var overridenMethods = model.GetDiagnostics()
-		.Where(x => x.Id == "CS0108")
-		.Select(x => root.FindNode(x.Location.SourceSpan))
-		.OfType<MethodDeclarationSyntax>()
-		.Where(x => x.AttributeLists.SelectMany(a => a.Attributes).Any(a => a.Name.ToString() == "Override"))
-		.ToList();
-Type.GetType("Microsoft.CodeAnalysis.CSharp.Symbols.PublicModel.MethodSymbol, Microsoft.CodeAnalysis.CSharp").Dump();
-return;
-	var underlyingMethodSymbolProperty = overridenMethods
-	.Select(x =>
+	var editors = await solution.Projects
+	            .SelectMany(x => x.Documents)
+	            .ToAsyncEnumerable()
+				.SelectAwait(async x => await DocumentEditor.CreateAsync(x))
+				.ToDictionaryAsync(x => x.OriginalDocument.FilePath);
+
+	foreach (var editor in editors.Values)
 	{
-		var symbol = model.GetDeclaredSymbol(x);
-		var prop = symbol.GetType().GetProperty("UnderlyingMethodSymbol", BindingFlags.NonPublic | BindingFlags.Instance);
-		var internalSymbol = prop.GetValue(symbol);
-		var prop2 = internalSymbol.GetType().GetProperty("OverriddenOrHiddenMembers", BindingFlags.NonPublic | BindingFlags.Instance);
-		var hiddenResult = prop2.GetValue(internalSymbol);
-		var prop3 = hiddenResult.GetType().GetProperty("HiddenMembers", BindingFlags.Public | BindingFlags.Instance);
-		//var finalSymbol = new (
-		var hiddenSymbols = (System.Collections.IEnumerable)prop3.GetValue(hiddenResult);
-		hiddenSymbols.Cast<object>()
-		.Dump();
-		return hiddenSymbols;
-	})
-	.First();
-	
-	underlyingMethodSymbolProperty.Dump();
-	
-	//var directMembers = symbol.GetMembers().OfType<IMethodSymbol>().Select(x => x).Dump();
-	//var baseMembers = symbol.BaseType.GetMembers().OfType<IMethodSymbol>().Select(x => x.First().Dump();
+		doc = editor.OriginalDocument;
+		var model = await doc.GetSemanticModelAsync();
+		var root = (CompilationUnitSyntax) await doc.GetSyntaxRootAsync();
+		
+		var overridenMethods = model.GetDiagnostics()
+			.Where(x => x.Id == "CS0108")
+			.Select(x => root.FindNode(x.Location.SourceSpan))
+			.OfType<MethodDeclarationSyntax>()
+			.Where(x => x.AttributeLists.SelectMany(a => a.Attributes).Any(a => a.Name.ToString() == "Override"))
+			.ToList();
+
+		foreach(var overrideMethod in overridenMethods)
+		{
+			var symbol = model.GetDeclaredSymbol(overrideMethod);
+			var underlyingMethodSymbolProp =
+				symbol.GetType()
+					.GetProperty("UnderlyingMethodSymbol", BindingFlags.NonPublic | BindingFlags.Instance); // Microsoft.CodeAnalysis.CSharp.Symbols.MethodSymbol
+			var internalSymbol = underlyingMethodSymbolProp.GetValue(symbol);
+			var overriddenOrHiddenMembersProp = internalSymbol.GetType().GetProperty("OverriddenOrHiddenMembers", BindingFlags.NonPublic | BindingFlags.Instance);
+			var hiddenResult = overriddenOrHiddenMembersProp.GetValue(internalSymbol);
+			var hiddenMembersProp = hiddenResult.GetType().GetProperty("HiddenMembers", BindingFlags.Public | BindingFlags.Instance);
+			var hiddenSymbols = (System.Collections.IEnumerable) hiddenMembersProp.GetValue(hiddenResult);
+			var overridenMethod = hiddenSymbols
+				.Cast<object>()
+				.Select(x => MethodSymbolConstructor.Invoke(new[] {x}))
+				.Cast<IMethodSymbol>()
+				.Where(x => x.ContainingType.TypeKind == TypeKind.Class)
+				.SelectMany(x => x.DeclaringSyntaxReferences)
+				.Select(x => x.SyntaxTree.GetRoot().FindNode(x.Span))
+				.Cast<MethodDeclarationSyntax>()
+				.FirstOrDefault();
+			// the override attribute actually overrides a method on base class (not implemented interface). requires "override" keyword and abstract/virtual on base class
+			if (overridenMethod == null) continue;
+			var baseClassEditor = editors[overrideMethod.SyntaxTree.FilePath];
+			editor.ReplaceNode(overrideMethod, (existing, _) => existing
+				.AddModifiers(SyntaxFactory.Token(SyntaxKind.OverrideKeyword))
+				.WithAttributeLists(SyntaxFactory.List(existing.AttributeLists.Where(x => x.Attributes.All(a => a.Name.ToString() != "Override")))));
+			baseClassEditor.ReplaceNode(overridenMethod,
+				(existing, _) => existing.Body != null || existing.ExpressionBody != null
+					? existing.AddModifiers(SyntaxFactory.Token(SyntaxKind.VirtualKeyword))
+					: existing.AddModifiers(SyntaxFactory.Token(SyntaxKind.AbstractKeyword)));
+		}
+	}
+
+	solution = editors.Values.Aggregate(solution, (sol, editor) => sol.WithDocumentSyntaxRoot(editor.OriginalDocument.Id, editor.GetChangedRoot()));
+	solution.GetDocument(docId).GetSyntaxRootAsync().Result.ToString().Dump();
+}
+public record DocumentFix(SyntaxNode From, Func<SyntaxNode, SyntaxGenerator, SyntaxNode> To)
+{
+	public static DocumentFix Replace<T>(T from, Func<T, SyntaxGenerator, T> to) where T : SyntaxNode
+	{
+		return new DocumentFix(from, (existing, gen) => to((T)existing, gen));
+	}
 }
 public static class Extensions
 {
 	public static bool IsPascalCase(this SyntaxToken token)
 	{
 		var val = token.Text;
-        if (string.IsNullOrEmpty(val))
-            return false;
-        return Regex.IsMatch(val, "^[A-Z]");
-    }
+		if (string.IsNullOrEmpty(val))
+			return false;
+		return Regex.IsMatch(val, "^[A-Z]");
+	}
 
-    public static string ToPascalCase(this string val)
-    {
-        if (string.IsNullOrEmpty(val))
-            return val;
-        return val[0].ToString().ToUpper() + val.Remove(0, 1);
+	public static string ToPascalCase(this string val)
+	{
+		if (string.IsNullOrEmpty(val))
+			return val;
+		return val[0].ToString().ToUpper() + val.Remove(0, 1);
 	}
 	public static ValueTask<T> ToValueTask<T>(this Task<T> task)
 	{
 		return new ValueTask<T>(task);
 	}
-	
-	
+	public static void ReplaceNode<T>(this DocumentEditor editor, T from, Func<T, SyntaxGenerator, T> to) where T : SyntaxNode
+	{
+		editor.ReplaceNode(from, (existing, gen) => to((T)existing, gen));
+	}
+
 }

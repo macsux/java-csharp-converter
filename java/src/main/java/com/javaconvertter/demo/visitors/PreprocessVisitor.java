@@ -5,6 +5,8 @@ import com.github.javaparser.ast.body.AnnotationMemberDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.expr.Name;
+import com.github.javaparser.ast.expr.SimpleName;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.visitor.ModifierVisitor;
 import com.github.javaparser.ast.visitor.Visitable;
@@ -128,8 +130,16 @@ public class PreprocessVisitor extends ModifierVisitor<Void> {
 
     @Override
     public Visitable visit(FieldDeclaration n, Void v) {
+
         if(n.getVariables().getFirst().get().getNameAsString().equals("serialVersionUID"))
             n.remove();
         return super.visit(n,v);
+    }
+
+    @Override
+    public Visitable visit(SimpleName n, Void arg) {
+        if(n.getIdentifier().equals("delegate"))
+            n.setIdentifier("__delegate");
+        return super.visit(n, arg);
     }
 }

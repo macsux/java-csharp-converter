@@ -1,6 +1,8 @@
-﻿using System.Text.RegularExpressions;
+﻿using System;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Editing;
 
 namespace Converter
 {
@@ -23,6 +25,11 @@ namespace Converter
         public static ValueTask<T> ToValueTask<T>(this Task<T> task)
         {
             return new ValueTask<T>(task);
+        }
+        
+        public static void ReplaceNode<T>(this DocumentEditor editor, T from, Func<T, SyntaxGenerator, T> to) where T : SyntaxNode
+        {
+            editor.ReplaceNode(from, (existing, gen) => to((T)existing, gen));
         }
     }
 }

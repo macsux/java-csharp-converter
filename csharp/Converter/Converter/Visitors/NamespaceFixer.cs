@@ -12,12 +12,13 @@ namespace Converter.Visitors
         {
             
             return node
-                    .WithUsings(List(node.Usings.Where(x => x.Name.ToString().StartsWith("org.axon"))))
+                    .WithUsings(List(node.Usings.Where(x => x.Name.ToString().StartsWith("org.axon")).Distinct()))
                 .AddUsings(UsingDirective(IdentifierName("System")))
                 .AddUsings(UsingDirective(IdentifierName("System.Linq")))
                 .AddUsings(UsingDirective(IdentifierName("System.Reflection")))
                 .AddUsings(UsingDirective(IdentifierName("System.Collections.Generic")))
-                .AddUsings(UsingDirective(IdentifierName("System.Collections.Concurrent")));
+                .AddUsings(UsingDirective(IdentifierName("System.Collections.Concurrent")))
+                .AddUsings(UsingDirective(IdentifierName("Microsoft.Extensions.Logging")));
         }
     }
 }

@@ -11,6 +11,12 @@ namespace Converter.Visitors
     {
         private static readonly Dictionary<string, string> _typeMap = new()
         {
+            {"Runnable","Action"},
+            {"Runnable","Action"},
+            {"CompletableFuture","Task"},
+            {"ConcurrentHashMap","ConcurrentDictionary"},
+            {"AnnotatedElement","MemberInfo"},
+            {"Annotation","Attribute"},
             {"Logger", "ILogger"},
             {"Class", "Type"},
             {"Map", "IDictionary"},

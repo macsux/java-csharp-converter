@@ -30,7 +30,7 @@ public class MyFileVisitor extends SimpleFileVisitor<Path> {
     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
         var relativePath = sourceRoot.relativize(file);
         try {
-            if(file.equals(Path.of("C:\\projects\\AxonFramework\\messaging\\src\\main\\java\\org\\axonframework\\common\\CollectionUtils.java")))
+//            if(file.getFileName().toString().equals("FailureLoggingCallback.java"))
             processFile(sourceRoot, targetRoot, relativePath);
         }catch(Exception e){
             logger.error(String.format("ERROR in file %s", relativePath));
