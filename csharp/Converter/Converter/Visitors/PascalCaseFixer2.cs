@@ -23,7 +23,12 @@ namespace Converter.Visitors
             switch (expression)
             {
                 case MemberAccessExpressionSyntax memberAccess:
-                    expression = memberAccess.WithName(IdentifierName(memberAccess.Name.Identifier.Text.ToPascalCase()));
+                    // if (memberAccess.Expression is GenericNameSyntax genericName)
+                    // {
+                    //     genericName.WithIdentifier()
+                    // }
+                    expression = memberAccess.WithName(memberAccess.Name.WithIdentifier(Identifier(memberAccess.Name.Identifier.Text.ToPascalCase())));
+                    // expression = memberAccess.WithName(IdentifierName(memberAccess.Name.Identifier.Text.ToPascalCase()));
                     break;
                 case IdentifierNameSyntax identifierName:
                     expression = IdentifierName(identifierName.Identifier.Text.ToPascalCase());

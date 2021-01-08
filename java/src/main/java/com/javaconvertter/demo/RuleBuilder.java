@@ -61,6 +61,11 @@ public class RuleBuilder {
         Position stop = context.getEnd().get().right(1);
         return replace(stop, stop, value);
     }
+    public RuleBuilder append(JavaToken context, String value)
+    {
+        Position stop = context.getRange().get().end.right(1);
+        return replace(stop, stop, value);
+    }
 
     public RuleBuilder replace(Position start, Position stop, String replacement) {
         return replace(start, stop, null, replacement);

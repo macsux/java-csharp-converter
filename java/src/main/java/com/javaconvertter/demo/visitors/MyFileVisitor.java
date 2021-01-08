@@ -30,7 +30,7 @@ public class MyFileVisitor extends SimpleFileVisitor<Path> {
     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
         var relativePath = sourceRoot.relativize(file);
         try {
-//            if(file.getFileName().toString().equals("FailureLoggingCallback.java"))
+//            if(file.getFileName().toString().equals("ReflectionUtils.java"))
             processFile(sourceRoot, targetRoot, relativePath);
         }catch(Exception e){
             logger.error(String.format("ERROR in file %s", relativePath));
@@ -55,7 +55,7 @@ public class MyFileVisitor extends SimpleFileVisitor<Path> {
         CompilationUnit cu = parser.parse(sourceCode).getResult().get();
 
 //        var rules = new ArrayList<Rule>();
-        var rules = new RuleBuilder();
+        var rules =     new RuleBuilder();
         var preprocessor = new PreprocessVisitor();
         cu.accept(preprocessor, null);
         sourceCode = cu.toString();

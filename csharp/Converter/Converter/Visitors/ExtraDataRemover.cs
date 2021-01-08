@@ -11,7 +11,8 @@ namespace Converter.Visitors
     {
         private HashSet<string> attributesToRemove = new()
         {
-            "SuppressWarnings"
+            "SuppressWarnings",
+            "FunctionalInterface"
         };
         public override SyntaxNode? VisitAttribute(AttributeSyntax node)
         {
@@ -33,6 +34,17 @@ namespace Converter.Visitors
                 return null;
             node = node.WithAttributes(SeparatedList(newAttributes));
             return base.VisitAttributeList(node);
+        }
+
+        private static HashSet<string> _typesToStripGenerics = new ()
+        {
+            "Type"
+        };
+        public override SyntaxNode? VisitGenericName(GenericNameSyntax node)
+        {
+            if(_typesToStripGenerics.Contains(node.Identifier.Text))
+                return IdentifierName(node.Identifier.Text);
+            return base.VisitGenericName(node);
         }
     }
 }

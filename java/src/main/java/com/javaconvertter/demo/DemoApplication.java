@@ -32,6 +32,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Some code that uses JavaParser.
@@ -64,7 +65,8 @@ public class DemoApplication {
                 e.printStackTrace();
             }
         }
-
+        TypeDiagnostics typeDiagnostics = new TypeDiagnostics();
+        typeDiagnostics.erasures.entrySet().forEach(x -> logger.info(x.getKey() + ": " + x.getValue().entrySet().stream().map(y -> y.getKey() + ":" + y.getValue()).collect(Collectors.joining(", "))));
 //        CodeGenerationUtils.packageToPath()
 
 //        var fileName = CodeGenerationUtils.fileInPackageAbsolutePath(root, pkg, file).toAbsolutePath();

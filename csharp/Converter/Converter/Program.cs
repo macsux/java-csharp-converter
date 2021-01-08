@@ -24,12 +24,7 @@ namespace Converter
     {
         static async Task Main(string[] args)
         {
-            // var visitors = typeof(Program).Assembly.GetTypes()
-            //     .Where(x => x.IsPublic && typeof(CSharpSyntaxRewriter).IsAssignableFrom(x))
-            //     .OrderByDescending(x => x.GetCustomAttribute<PriorityAttribute>()?.Priority)
-            //     .Select(x => Activator.CreateInstance(x))
-            //     .Cast<CSharpSyntaxRewriter>()
-            //     .ToList();
+
             MSBuildLocator.RegisterDefaults();
             var mylock = new object();
             using var workspace = MSBuildWorkspace.Create();
@@ -37,50 +32,61 @@ namespace Converter
             var solution = await workspace.OpenSolutionAsync(@"C:\projects\NAxonAuto\\first\NAxonFramework.sln");
             WriteLine($"Loaded solution {solution.FilePath}");
 
-            
-            // var nameFixer = new PascalCaseFixer();
-            // solution = await nameFixer.Visit(workspace);
-            // var fixers = new Type[]
-            // {
-            //     typeof(NamespaceFixer),
-            //     typeof(AttributeRemover),
-            //     typeof(ImplicitGenericsFixer),
-            //     typeof(ClassRemapper),
-            //     typeof(PascalCaseFixer2),
-            // };
-
-            foreach (var project in solution.Projects.Skip(2))
+            IEnumerable<Document> GetDocuments(Solution sol)
             {
-                // foreach (var doc in project.Documents.Where(x => x.FilePath.Contains("RetryingCallback")))
-                foreach (var doc in project.Documents)
-                {
-                    
-                    //var fixer = (Fixer)Activator.CreateInstance(fixerType, editor);
-                    var visitors = new List<CSharpSyntaxRewriter>
-                    {
-                        new NamespaceFixer(),
-                        new AttributeRemover(),
-                        new ClassRemapper(),
-                        new PascalCaseFixer2()
-                    };
-                    var cu = (CompilationUnitSyntax) await doc.GetSyntaxRootAsync();
-                    cu = cu.WithoutLeadingTrivia();
-                    foreach (var visitor in visitors)
-                    {
-                        cu = (CompilationUnitSyntax) visitor.Visit(cu);
-                    }
-                    
-                    // await fixer.Initialize();
-                    // fixer.VisitDocument();
-                    cu = (CompilationUnitSyntax) Microsoft.CodeAnalysis.Formatting.Formatter.Format(cu, workspace);
+                return sol.Projects.Skip(2)
+                        .SelectMany(x => x.Documents)
+                        // .Where(x => x.FilePath.Contains("MessageHandler.cs"))
+                    ;
+            }
 
-                    solution = solution.WithDocumentSyntaxRoot(doc.Id, cu);
-                    var editor = await DocumentEditor.CreateAsync(solution.GetDocument(doc.Id));
-                    var genericsFixer = new ImplicitGenericsFixer(editor);
-                    genericsFixer.Visit(editor.OriginalRoot);
-                    // genericsFixer.VisitDocument();
-                    solution = solution.WithDocumentSyntaxRoot(doc.Id, editor.GetChangedRoot());
+            foreach (var doc in GetDocuments(solution))
+            {
+           
+                var visitors = new List<CSharpSyntaxRewriter>
+                {
+                    new NamespaceFixer(),
+                    new ClassRemapper(),
+                    new AttributeRemover(),
+                    new PascalCaseFixer2(),
+                    new SpecialUseRemapper()
+                };
+                var cu = (CompilationUnitSyntax) await doc.GetSyntaxRootAsync();
+                cu = cu.WithoutLeadingTrivia();
+                foreach (var visitor in visitors)
+                {
+                    cu = (CompilationUnitSyntax) visitor.Visit(cu);
                 }
+                
+                // await fixer.Initialize();
+                // fixer.VisitDocument();
+                cu = (CompilationUnitSyntax) Microsoft.CodeAnalysis.Formatting.Formatter.Format(cu, workspace);
+
+                solution = solution.WithDocumentSyntaxRoot(doc.Id, cu);
+               
+            }
+            
+            
+            var editors = await GetDocuments(solution)
+                .ToAsyncEnumerable()
+                .SelectAwait(async x => await DocumentEditor.CreateAsync(x))
+                .ToDictionaryAsync(x => x.OriginalDocument.FilePath);
+            
+            var fixers = new[]
+            {
+                typeof(MethodRemapper),
+                typeof(ImplicitGenericsFixer)
+            };
+            
+            foreach (var fixerType in fixers)
+            {
+                var fixer = (Fixer)Activator.CreateInstance(fixerType, editors);
+                fixer.Apply();
+            }
+            
+            foreach (var editor in editors.Values)
+            {
+                solution = solution.WithDocumentSyntaxRoot(editor.OriginalDocument.Id, editor.GetChangedRoot().NormalizeWhitespace());
             }
             
 

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -8,16 +9,29 @@ namespace Converter.Visitors
 {
     public class Fixer : CSharpSyntaxRewriter// CSharpSyntaxVisitor<bool>
     {
-        private Lazy<SemanticModel> _model;
-        protected SemanticModel Model => _model.Value;
+        protected readonly Dictionary<string, DocumentEditor> Editors;
+        // private Lazy<SemanticModel> _model;
+        protected SemanticModel Model => Editor.SemanticModel;// => _model.Value;
 
-        public Fixer(DocumentEditor editor)
+        public Fixer(Dictionary<string, DocumentEditor> editors)
         {
-            Editor = editor;
-            _model  = new Lazy<SemanticModel>(() => this.Editor.OriginalDocument.GetSemanticModelAsync().Result);
+            Editors = editors;
+            // Model = model;
+            // Editor = editor;
+            // _model  = new Lazy<SemanticModel>(() => this.Editor.OriginalDocument.GetSemanticModelAsync().Result);
         }
         
-        public DocumentEditor Editor { get; }
+        public DocumentEditor Editor { get; protected set; }
+
+        public virtual void Apply()
+        {
+            foreach (var editor in Editors.Values)
+            {
+                Editor = editor;
+                // Model = editor.SemanticModel;
+                this.Visit(editor.OriginalRoot);
+            }
+        }
 
         // public Document VisitDocument()
         // {

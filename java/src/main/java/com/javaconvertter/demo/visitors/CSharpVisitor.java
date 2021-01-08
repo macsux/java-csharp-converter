@@ -7,8 +7,11 @@ import com.github.javaparser.ast.body.*;
 import com.github.javaparser.ast.comments.JavadocComment;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.nodeTypes.NodeWithJavadoc;
+import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.stmt.ForEachStmt;
+import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.TypeParameter;
+import com.github.javaparser.ast.type.UnionType;
 import com.github.javaparser.ast.visitor.GenericVisitorAdapter;
 import com.github.javaparser.ast.visitor.Visitable;
 import com.github.javaparser.javadoc.JavadocBlockTag;
@@ -51,6 +54,24 @@ public class CSharpVisitor extends GenericVisitorAdapter<Visitable, RuleBuilder>
         rules.append(n, "\n}\n");
         return super.visit(n, rules);
     }
+
+    @Override
+    public Visitable visit(InitializerDeclaration n, RuleBuilder rules) {
+        if(n.isStatic()){
+            rules.append(findTokenIn(n, JavaToken.Kind.STATIC).get(), " " + ((ClassOrInterfaceDeclaration)n.getParentNode().get()).getName() + "()");
+        }
+        return super.visit(n, rules);
+    }
+
+    @Override
+    public Visitable visit(MethodCallExpr n, RuleBuilder rules) {
+        n.getTypeArguments().ifPresent(x -> {
+            rules.delete(n.getName());
+            rules.prepend(findTokenLeftOf(n.getName(), JavaToken.Kind.LT).get(), n.getName().asString());
+        });
+        return super.visit(n, rules);
+    }
+
     @Override
     public Visitable visit(ImportDeclaration n, RuleBuilder rules) {
         rules.replace(findTokenLeftOf(n.getName(), JavaToken.Kind.IMPORT).get(), "using");
@@ -189,7 +210,7 @@ public class CSharpVisitor extends GenericVisitorAdapter<Visitable, RuleBuilder>
     public Visitable visit(AnnotationDeclaration n, RuleBuilder rules) {
 
         convertJavadoc(n, rules);
-        var declaration = "public class " + n.getNameAsString() + "Attribute : Attribute";
+        var declaration = "public class " + n.getNameAsString() + " : Attribute";
         var start = new Position(n.getName().getBegin().get().line, 1);
         var stop = this.getPositionAtClosingBracket(n, n.getName());
         rules.replace(start, stop, declaration);
@@ -213,27 +234,45 @@ public class CSharpVisitor extends GenericVisitorAdapter<Visitable, RuleBuilder>
         return super.visit(n, rules);
     }
 
+    @Override
+    public Visitable visit(CatchClause n, RuleBuilder rules) {
+        if(n.getParameter().getType() instanceof UnionType)
+        {
+
+//            n.getParameter().getType()
+            var union = (UnionType)n.getParameter().getType();
+            var types = union.getElements().stream()
+                    .map(x -> "ex is " + x.toString())
+                    .collect(Collectors.joining(" || "));
+            rules.prepend(findTokenIn(n, JavaToken.Kind.LBRACE).get(), " when ( " + types + " )");
+            rules.replace(n.getParameter(), "Exception ex");
+//
+//            var newParameter = n.getParameter().setType(new ClassOrInterfaceType(null, "Exception"));
+//            var c = n.setParameter(newParameter);
+        }
+        return super.visit(n, rules);
+    }
 
     // Visitable Method()
     @Override
     public Visitable visit(MethodDeclaration n, RuleBuilder rules) {
         convertJavadoc(n, rules);
 
+        n.getParameters().getLast().ifPresent(lastParameter -> {
+            if(!lastParameter.isVarArgs())
+                return;
+            rules.prepend(lastParameter.getType(), "params ");
+            rules.replace(findTokenRightOf(lastParameter.getType(), JavaToken.Kind.ELLIPSIS).get(),"[]");
+        });
         // move type parameters after method name
         n.getTypeParameters().ifNonEmpty(typeParameters -> {
             rules.builder()
                     .fromStartOf(findTokenLeftOf(typeParameters.getFirst().get(), JavaToken.Kind.LT).get())
                     .toEndOf(findTokenLeftOf(n.getType(), JavaToken.Kind.GT).get())
                     .delete();
-//
-//            var start = typeParameters.getFirst().get().getBegin().get().right(-1);
-//            var stop = typeParameters.getLast().get().getEnd().get().right(3); // consume bracket and extra space
-//            rules.replace(start, stop, "");
 
-//            var typeParameterList = typeParameters.stream().map(x -> x.getNameAsString()).collect(Collectors.joining(","));
             var typeParamsString = this.getTypeParameters(typeParameters);
             var constraints = this.getGenericsConstraints(typeParameters);
-//            var typeParamsString = "<" + typeParameterList + ">";
 
             rules.append(n.getName(), typeParamsString);
 
@@ -274,6 +313,12 @@ public class CSharpVisitor extends GenericVisitorAdapter<Visitable, RuleBuilder>
             rules.replace(array, valuesAsEnumFlags);
         });
         return super.visit(n, rules);
+    }
+
+    @Override
+    public Visitable visit(FieldDeclaration n, RuleBuilder arg) {
+        convertJavadoc(n, arg);
+        return super.visit(n, arg);
     }
 
     // @Blah(field = "value")

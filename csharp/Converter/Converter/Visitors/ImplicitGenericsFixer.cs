@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
@@ -13,10 +14,10 @@ namespace Converter.Visitors
     public class ImplicitGenericsFixer : Fixer
     {
 
-        public ImplicitGenericsFixer(DocumentEditor editor) : base(editor)
+        public ImplicitGenericsFixer(Dictionary<string, DocumentEditor> editors) : base(editors)
         {
         }
-        
+
         public override SyntaxNode? VisitObjectCreationExpression(ObjectCreationExpressionSyntax node)
         {
             // add generic arguments when implicitly omitted in java
